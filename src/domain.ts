@@ -19,12 +19,18 @@ export interface WorkOrder {
 const HAZARD_INPUT = /\b(smoke|fire|flame|sparks?|sparking|burn(?:ing)? smell|electric shock|shock|exposed wire|liquid|water|spill|wet|soaked|damp|hot|heat|overheat(?:ed|ing)?)\b/i;
 const NEGATED_START = /^\s*(no|not|without|never|none)\b/i;
 const INVASIVE_STEP = /\b(?:open(?:ing)?\s+(?:(?:the|a|an)\s+)?(?:(?:service|access)\s+)?(?:case|housing|cover|panel|casing|unit)|remove\s+(?:(?:the|a|an)\s+)?(?:cover|panel|casing)|disassembl(?:e|ing|y)|bypass(?:ing)?\s+(?:(?:the|a|an)\s+)?(?:interlock|safety|sensor)|touch(?:ing)?\s+(?:(?:the)\s+)?(?:wiring|wires?|cables?|exposed\s+wire)|reach(?:ing)?\s+(?:inside|into)\s+(?:(?:the)\s+)?(?:unit|printer|machine|machinery)|work\s+inside\s+(?:(?:the)\s+)?(?:unit|printer|machine|machinery)|probe\s+(?:internal|inside)|short\s+(?:(?:the)\s+)?(?:wires?|terminals?|circuit))\b/i;
+// Unqualified mechanism inspections may invite access to moving/internal parts.
+const AMBIGUOUS_MECHANISM_STEP = /\b(?:check|inspect|examine|clear|clean|remove|access)\b[^.!?]{0,100}\b(?:feed|feeding|paper-feed|paper feed)\s+mechanism\b/i;
 const KNOWN_SOURCES = new Set(["ON_DEVICE", "IN_CLOUD", "LOCAL_FIXTURE", "LOCAL_GUARD"]);
+
+function isUnsafeStep(value: string): boolean {
+  return INVASIVE_STEP.test(value) || AMBIGUOUS_MECHANISM_STEP.test(value);
+}
 
 function clippedText(value: unknown, fallback: string, max = 240): string {
   if (typeof value !== "string") return fallback;
   const cleaned = value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, " ").trim();
-  return !cleaned || INVASIVE_STEP.test(cleaned) ? fallback : cleaned.slice(0, max);
+  return !cleaned || isUnsafeStep(cleaned) ? fallback : cleaned.slice(0, max);
 }
 
 function clippedList(value: unknown, fallback: string[], maxItems = 4, filterUnsafe = false): string[] {
@@ -33,7 +39,7 @@ function clippedList(value: unknown, fallback: string[], maxItems = 4, filterUns
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.replace(/[\u0000-\u0008\u000B\u000C-\u001F]/g, " ").trim().slice(0, 180))
     .filter(Boolean)
-    .filter((item) => !filterUnsafe || !INVASIVE_STEP.test(item))
+    .filter((item) => !filterUnsafe || !isUnsafeStep(item))
     .slice(0, maxItems);
   return cleaned.length ? cleaned : fallback;
 }
@@ -76,8 +82,8 @@ export function normalizeWorkOrder(input: unknown, context = "", source = "UNKNO
     ? value.confidence
     : "low";
   let checks = clippedList(value.checks, ["Confirm the exact model-specific instructions before touching the device."]);
-  const removedUnsafe = checks.some((step) => INVASIVE_STEP.test(step));
-  checks = checks.filter((step) => !INVASIVE_STEP.test(step));
+  const removedUnsafe = checks.some(isUnsafeStep);
+  checks = checks.filter((step) => !isUnsafeStep(step));
   if (removedUnsafe || checks.length === 0) {
     checks = ["No invasive step is provided. Use the device-specific manual or route the case to qualified maintenance."];
   }
@@ -104,6 +110,6 @@ export function inputContainsHazard(context: string): boolean {
 }
 
 export function sanitizeChecks(checks: string[]): string[] {
-  const filtered = checks.filter((step) => !INVASIVE_STEP.test(step));
+  const filtered = checks.filter((step) => !isUnsafeStep(step));
   return filtered.length ? filtered.slice(0, 4) : ["Use the device-specific manual or route the case to qualified maintenance."];
 }

@@ -62,6 +62,13 @@ describe("local safety guard", () => {
     expect(order.escalation).toBe("If the issue repeats or the device appears damaged, stop and contact qualified maintenance.");
   });
 
+  it("rejects ambiguous feed-mechanism inspection instructions seen in an actual model result", () => {
+    const order = normalizeWorkOrder({
+      checks: ["Ensure paper is properly seated in the tray.", "Check the paper feed mechanism for obstructions."]
+    }, "Paper-feed warning reported.", "ON_DEVICE");
+    expect(order.checks).toEqual(["No invasive step is provided. Use the device-specific manual or route the case to qualified maintenance."]);
+  });
+
   it("normalizes malformed model output to a cautious work order", () => {
     const order = normalizeWorkOrder({ category: "made_up", confidence: "certain", checks: [] }, "Unclear error");
     expect(order.category).toBe("unknown");
