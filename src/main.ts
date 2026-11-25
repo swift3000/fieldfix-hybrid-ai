@@ -29,7 +29,7 @@ root.innerHTML = `
   <main id="top" class="page-shell">
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow"><span class="eyebrow-line"></span> PHOTO-FIRST · OFFLINE-READY · NO CHAT</p>
+        <p class="eyebrow"><span class="eyebrow-line"></span> PHOTO-FIRST · ON-DEVICE OPTION · NO CHAT</p>
         <h1>Turn a first look<br /><em>into a safer next step.</em></h1>
         <p class="hero-lede">A focused handoff tool for office-printer interruptions. Capture what you see, record what changed, and leave with a bounded work order — not a guessed repair.</p>
       </div>

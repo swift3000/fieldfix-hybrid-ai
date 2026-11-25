@@ -1,4 +1,4 @@
-const CACHE_NAME = "fieldfix-shell-v0.2.0";
+const CACHE_NAME = "fieldfix-shell-v0.3.0";
 const APP_SCOPE = new URL("./", self.registration.scope).href;
 const SHELL = [APP_SCOPE, new URL("manifest.webmanifest", APP_SCOPE).href];
 
@@ -23,7 +23,13 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (request.method !== "GET" || !isInAppScope(url)) return;
 
-  // Deliberately do not runtime-cache case data, assets, navigations, or any other request.
-  // Only the exact install-time shell URLs above can be served from this cache.
-  event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
+  // Only the two public shell URLs may be cached. Other requests bypass this worker.
+  if (!SHELL.includes(url.href)) return;
+  event.respondWith(fetch(request).then(async (response) => {
+    if (response.ok) {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(request, response.clone());
+    }
+    return response;
+  }).catch(async () => (await caches.match(request)) || Response.error()));
 });

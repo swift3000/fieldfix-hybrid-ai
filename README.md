@@ -4,7 +4,7 @@
 
 > Pre-submission prototype · version 0.1.0. The current evidence includes an isolated local Chrome test using deliberately fictional Firebase configuration and synthetic inputs, plus one explicitly bounded cloud test using a real free Spark Firebase project. No credentials, API keys, App Check debug tokens, or personal data are included here.
 
-FieldFix is a photo-first, offline-ready **first-response handoff** for office-printer interruptions. It turns one image, a short symptom, and an optional excerpt from the device's own guide into a bounded work order: what was reported, a few non-invasive checks, and a clear point to hand the case to qualified maintenance. It is not a repair diagnosis, a safety certification, or a general chat assistant.
+FieldFix is a photo-first, local-first **first-response handoff** for office-printer interruptions. It turns one image, a short symptom, and an optional excerpt from the device's own guide into a bounded work order: what was reported, a few non-invasive checks, and a clear point to hand the case to qualified maintenance. It is not a repair diagnosis, a safety certification, or a general chat assistant. Loading the site and preparing the on-device model may require a network connection; full offline availability has not been verified.
 
 ## Why this is different
 
