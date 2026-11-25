@@ -2,6 +2,8 @@ import "./styles.css";
 import { SAMPLE_MANUAL_NOTE, SAMPLE_ORDER, SAMPLE_SVG, SAMPLE_SYMPTOM } from "./sample";
 import { normalizeWorkOrder, type WorkOrder } from "./domain";
 import { firebaseIsConfigured, runLiveTriage } from "./firebase-ai";
+import { resolveRuntimeMode } from "./runtime-mode";
+import { resolveServiceWorkerUrl } from "./service-worker-url";
 
 interface State {
   file: File | null;
@@ -155,12 +157,15 @@ function showToast(message: string): void {
 
 function updateSetup(): void {
   const configured = firebaseIsConfigured();
+  const localDemo = resolveRuntimeMode(import.meta.env) === "LOCAL_DEMO";
   const setupPill = $("#setup-pill");
   const setupNote = $("#setup-note");
-  setupPill.textContent = configured ? "Firebase config · unverified" : "Local fixture · no Firebase project";
+  setupPill.textContent = localDemo ? "Local demo · on-device only" : configured ? "Firebase config · unverified" : "Local fixture · no Firebase project";
   setupPill.classList.remove("configured");
-  setupPill.classList.toggle("unverified", configured);
-  setupNote.innerHTML = configured
+  setupPill.classList.toggle("unverified", configured && !localDemo);
+  setupNote.innerHTML = localDemo
+    ? `<strong>Local demo mode is locked to <code>ONLY_ON_DEVICE</code>.</strong> This uses only the fictional demo configuration and cannot fall back to cloud. It does not connect to a Firebase project and does not prove production App Check.`
+    : configured
     ? `<strong>Firebase client config is present, but the live path is unverified.</strong> This does not confirm App Check token issuance, enforcement, or model availability. No request runs until you press the live-triage button; see the README for the remaining checks.`
     : `<strong>Live AI is not connected.</strong> This build contains no Firebase project configuration or API secret. The sample workflow is available; live inference stays disabled until a project and App Check are configured.`;
   updateButtons();
@@ -168,17 +173,21 @@ function updateSetup(): void {
 
 function updateButtons(): void {
   const configured = firebaseIsConfigured();
+  const localDemo = resolveRuntimeMode(import.meta.env) === "LOCAL_DEMO";
   const hasEvidence = Boolean(state.file) && !state.sample && symptomInput.value.trim().length > 0;
   liveButton.disabled = !configured || !hasEvidence || state.busy;
   liveButton.classList.toggle("is-busy", state.busy);
   photoInput.disabled = state.busy;
   symptomInput.disabled = state.busy;
   manualInput.disabled = state.busy;
-  cloudConsent.disabled = state.busy;
+  cloudConsent.disabled = state.busy || localDemo;
+  if (localDemo) cloudConsent.checked = false;
   $("#sample-button").toggleAttribute("disabled", state.busy);
   $("#demo-button").toggleAttribute("disabled", state.busy);
   resultContent.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, button").forEach((control) => { control.disabled = state.busy; });
-  $("#routing-description").textContent = cloudConsent.checked
+  $("#routing-description").textContent = localDemo
+    ? "Local demo: the SDK is locked to ONLY_ON_DEVICE. Cloud fallback is unavailable."
+    : cloudConsent.checked
     ? "Hybrid: try Chrome's local model first; cloud fallback is allowed for this case."
     : "Local-only: this request must stay on the device. No cloud fallback.";
 }
@@ -381,8 +390,11 @@ function showSampleOrder(): void {
 
 liveButton.addEventListener("click", async () => {
   if (!firebaseIsConfigured() || !state.file || state.busy) return;
+  const localDemo = resolveRuntimeMode(import.meta.env) === "LOCAL_DEMO";
   if (cloudConsent.checked && !window.confirm("Cloud fallback is enabled for this case. If Chrome cannot run its on-device model, the selected photo, symptom, and optional guide excerpt may be sent to Google through Firebase AI Logic. Continue?")) return;
-  if (!cloudConsent.checked && !window.confirm("Local-only mode is selected. This request will not fall back to cloud. Continue on this device?")) return;
+  if (!cloudConsent.checked && !window.confirm(localDemo
+    ? "Local demo mode is locked to ONLY_ON_DEVICE. No cloud fallback is possible. Continue on this device?"
+    : "Local-only mode is selected. This request will not fall back to cloud. Continue on this device?")) return;
 
   state.busy = true;
   liveStatus.textContent = "Preparing Chrome's on-device model… first-use download may take several minutes.";
@@ -415,5 +427,8 @@ function clearOnReloadWarning(): void {
 updateSetup();
 clearOnReloadWarning();
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => undefined));
+  window.addEventListener("load", () => {
+    const swUrl = resolveServiceWorkerUrl(import.meta.env.BASE_URL, document.baseURI || location.href);
+    navigator.serviceWorker.register(swUrl, { scope: new URL("./", swUrl).pathname }).catch(() => undefined);
+  });
 }

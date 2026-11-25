@@ -4,6 +4,7 @@ import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, InferenceSou
 import { normalizeWorkOrder, inputContainsHazard, type WorkOrder } from "./domain";
 
 import { fitWithinMaxEdge } from "./image-sizing";
+import { allowCloudFallback as enforceCloudFallback, inferenceMode, isFirebaseConfigured, resolveRuntimeMode, runtimeConfig } from "./runtime-mode";
 
 const CLOUD_MODEL = "gemini-3.5-flash-lite";
 let appCheckReady = false;
@@ -22,19 +23,17 @@ const responseSchema = Schema.object({
 });
 
 function firebaseConfig() {
+  const config = runtimeConfig(import.meta.env);
   return {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY?.trim() ?? "",
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN?.trim() ?? "",
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID?.trim() ?? "",
-    appId: import.meta.env.VITE_FIREBASE_APP_ID?.trim() ?? ""
+    apiKey: config.apiKey,
+    authDomain: config.authDomain,
+    projectId: config.projectId,
+    appId: config.appId
   };
 }
 
 export function firebaseIsConfigured(): boolean {
-  const config = firebaseConfig();
-  return Object.values(config).every((value) => value.length > 0 && !value.startsWith("replace-with"))
-    && (import.meta.env.VITE_RECAPTCHA_V3_SITE_KEY?.trim().length ?? 0) > 0
-    && !import.meta.env.VITE_RECAPTCHA_V3_SITE_KEY?.startsWith("replace-with");
+  return isFirebaseConfigured(import.meta.env);
 }
 
 function makeModel(allowCloudFallback: boolean) {
@@ -48,7 +47,9 @@ function makeModel(allowCloudFallback: boolean) {
     // This only enables the SDK's localhost debug provider. The generated token is never read or written by app code.
     (globalThis as typeof globalThis & { FIREBASE_APPCHECK_DEBUG_TOKEN?: boolean }).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
   }
-  if (!appCheckReady) {
+  // The fictional local-demo fixture must remain offline and cannot use App Check.
+  // Standard mode requires the operator's real, authorized App Check configuration.
+  if (resolveRuntimeMode(import.meta.env) !== "LOCAL_DEMO" && !appCheckReady) {
     initializeAppCheck(app, {
       provider: new ReCaptchaV3Provider(import.meta.env.VITE_RECAPTCHA_V3_SITE_KEY),
       isTokenAutoRefreshEnabled: true
@@ -58,7 +59,9 @@ function makeModel(allowCloudFallback: boolean) {
 
   const ai = getAI(app, { backend: new GoogleAIBackend() });
   return getGenerativeModel(ai, {
-    mode: allowCloudFallback ? InferenceMode.PREFER_ON_DEVICE : InferenceMode.ONLY_ON_DEVICE,
+    mode: inferenceMode(import.meta.env, allowCloudFallback) === "PREFER_ON_DEVICE"
+      ? InferenceMode.PREFER_ON_DEVICE
+      : InferenceMode.ONLY_ON_DEVICE,
     inCloudParams: {
       model: CLOUD_MODEL,
       generationConfig: { responseMimeType: "application/json", responseSchema }
@@ -122,9 +125,13 @@ export async function runLiveTriage(
   image: File,
   symptom: string,
   manualExcerpt: string,
-  allowCloudFallback: boolean,
+  requestedCloudFallback: boolean,
   onProgress: (progress: number) => void
 ): Promise<LiveTriageResult> {
+  const effectiveCloudFallback = enforceCloudFallback(import.meta.env, requestedCloudFallback);
+  if (resolveRuntimeMode(import.meta.env) === "LOCAL_DEMO" && requestedCloudFallback) {
+    onProgress(0);
+  }
   if (!/^image\/(jpeg|png)$/.test(image.type)) throw new Error("Choose a JPEG or PNG image for hybrid vision.");
   if (image.size > 5 * 1024 * 1024) throw new Error("Choose an image smaller than 5 MB.");
   if (inputContainsHazard(`${symptom}\n${manualExcerpt}`)) {
@@ -132,11 +139,11 @@ export async function runLiveTriage(
     return { workOrder: guarded, inferenceSource: "UNKNOWN", model: "Local safety guard" };
   }
 
-  const model = makeModel(allowCloudFallback);
+  const model = makeModel(effectiveCloudFallback);
   try {
     await model.initializeDeviceModel((fraction) => onProgress(Math.max(0, Math.min(100, Math.round(fraction * 100)))));
   } catch (error) {
-    if (!allowCloudFallback) {
+    if (!effectiveCloudFallback) {
       throw new Error("The on-device model is not ready. Stay local and try again after Chrome finishes preparing it, or explicitly enable cloud fallback.");
     }
     // Cloud fallback is possible only after the user has checked the explicit consent control.
