@@ -1,0 +1,10 @@
+{
+  "name": "FieldFix — Safe first response",
+  "short_name": "FieldFix",
+  "description": "Photo-first office-printer incident triage and work-order handoff.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101a18",
+  "theme_color": "#101a18",
+  "icons": []
+}
